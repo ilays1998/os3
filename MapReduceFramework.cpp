@@ -50,8 +50,18 @@ bool compareIntermediateVec(const IntermediatePair& a, const IntermediatePair& b
 void sortIntermediateVec(ThreadContext* threadContext){
     std::sort(threadContext->threadIntermediateVec->begin(), threadContext->threadIntermediateVec->end(), compareIntermediateVec);
 }
-void insertIntermediateVecs(JobContext* jobContext){
+void insertIntermediateVecs(JobContext* jobContext, ThreadContext* threadContext){
     std::lock_guard<std::mutex> lock(jobContext->insertIntermediateVecsMutex);
+    auto lastIndex = jobContext->intermediateVec->begin();
+    for (int i = 0; i < threadContext->threadIntermediateVec->size(); i++){
+        auto it = std::lower_bound(lastIndex,
+                                       jobContext->intermediateVec->end(),
+                                       threadContext->threadIntermediateVec->at(i),
+                                       compareIntermediateVec);
+        jobContext->intermediateVec->insert(it, threadContext->threadIntermediateVec->at(i));
+        lastIndex = it; //TODO make sure its logical
+    }
+    //std::lock_guard<std::mutex> unlock(jobContext->insertIntermediateVecsMutex); //TODO check if neccasry
 }
 
 void emit2 (K2* key, V2* value, void* context) {
