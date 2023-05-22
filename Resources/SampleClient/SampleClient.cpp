@@ -85,14 +85,14 @@ int main(int argc, char** argv)
 	while (state.stage != REDUCE_STAGE || state.percentage != 100.0)
 	{
         if (last_state.stage != state.stage || last_state.percentage != state.percentage){
-            printf("stage %d, %f%% \n", 
+            printf("atomic %d, %f%% \n",
 			state.stage, state.percentage);
         }
 		usleep(100000);
         last_state = state;
 		getJobState(job, &state);
 	}
-	printf("stage %d, %f%% \n", 
+	printf("atomic %d, %f%% \n",
 			state.stage, state.percentage);
 	printf("Done!\n");
 	

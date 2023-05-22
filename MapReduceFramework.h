@@ -8,7 +8,7 @@ typedef void* JobHandle;
 enum stage_t {UNDEFINED_STAGE=0, MAP_STAGE=1, SHUFFLE_STAGE=2, REDUCE_STAGE=3};
 
 typedef struct {
-	stage_t stage;
+	stage_t atomic;
 	float percentage;
 } JobState;
 
