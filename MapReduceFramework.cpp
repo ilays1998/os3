@@ -10,6 +10,7 @@
 #include "semaphore.h"
 #include <atomic>
 #include <algorithm>
+#include "Resources/Barrier/Barrier.h"
 #include <mutex>
 
 
@@ -17,6 +18,8 @@ typedef void* JobHandle;
 
 //TODO implement stages
 enum stage_t {UNDEFINED_STAGE=0, MAP_STAGE=1, SHUFFLE_STAGE=2, REDUCE_STAGE=3};
+
+typedef std::vector<IntermediateVec> VecOfIntermediateVec;
 
 typedef struct {
     stage_t stage;
@@ -35,6 +38,7 @@ struct ThreadContext {
     IntermediateVec* threadIntermediateVec;
     std::atomic<int>* atomic_counter;
     JobContext *globalJobContext;
+
     //OutputVec* threadOutputVec;
 };
 
@@ -44,8 +48,12 @@ struct JobContext {
     pthread_mutex_t* pthreadMutex;
     sem_t sem;
     std::atomic<int>* atomic_counter;
-    IntermediateVec* intermediateVec;
+    //IntermediateVec* intermediateVec;
+    VecOfIntermediateVec *vecOfIntermediateVec;
     int numOfThreads;
+    Barrier* barrier;
+
+
     //std::mutex insertIntermediateVecsMutex;
 };
 
@@ -101,16 +109,23 @@ void insertIntermediateVecs(JobContext* jobContext, ThreadContext* threadContext
             if (curLargestKey == nullptr){
                 break;
             }
+            IntermediateVec intermediateVecTemp;
             for (int i = 0; i < jobContext->numOfThreads; i++){
                 ThreadContext* tc = (ThreadContext*) (jobContext->threadsContext + i); //TODO check
                 IntermediatePair temp = tc->threadIntermediateVec->back();
                 if (!(temp.first < curLargestKey) &&
                         !(curLargestKey < temp.first)){
-                    jobContext->intermediateVec->insert(jobContext->intermediateVec->begin(), temp);
+
+                    intermediateVecTemp.push_back(temp);
                     tc->threadIntermediateVec->pop_back();
                 }
             }
+            jobContext->vecOfIntermediateVec->insert(jobContext->vecOfIntermediateVec->begin(),
+                                                     intermediateVecTemp);
+            (*(jobContext->atomic_counter))++;
+            //intermediateVecTemp.clear(); //TODO maybe
         }
+
         sem_post(&(jobContext->sem));
     }
 }
@@ -133,22 +148,29 @@ void* mapWraper(void* arg){
                                             threadContext->inputVec->at(i).second,
                                             threadContext);
     }
+
     sortIntermediateVec(threadContext);
+    threadContext->globalJobContext->barrier->barrier();
+    //end barrier
+
     insertIntermediateVecs(threadContext->globalJobContext, threadContext);
+    threadContext->globalJobContext->barrier->barrier(); //TODO check if needed
     //pthread_mutex_unlock(&mtx);
 }
 
 JobHandle startMapReduceJob(const MapReduceClient& client,
                             const InputVec& inputVec, OutputVec& outputVec,
                             int multiThreadLevel) {
+    Barrier barrier(multiThreadLevel);
     std::atomic<int> atomic_counter(0);
     ThreadContext allThreadsContext[multiThreadLevel];
     pthread_t threads[multiThreadLevel];
     JobContext *jobContext = new JobContext;
+    jobContext->barrier = &barrier;
     jobContext->threadsContext = allThreadsContext;
     jobContext->myState = new JobState[multiThreadLevel];
     jobContext->atomic_counter = &atomic_counter;
-    jobContext->intermediateVec = new IntermediateVec;
+    jobContext->vecOfIntermediateVec = new VecOfIntermediateVec ;
     jobContext->numOfThreads = multiThreadLevel;
     int pairsForThread = inputVec.size()/multiThreadLevel;
     for (int i = 0; i < multiThreadLevel; i++) {

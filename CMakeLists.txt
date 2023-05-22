@@ -10,4 +10,6 @@ include_directories(Resources/Barrier)
 add_executable(os3
         MapReduceFramework.cpp
         MapReduceClient.h
-        MapReduceFramework.h)
+        MapReduceFramework.h
+        Resources/Barrier/Barrier.cpp
+        Resources/Barrier/Barrier.h)
