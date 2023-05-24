@@ -20,7 +20,7 @@ struct JobContext {
     JobState myState;
     std::vector<ThreadContext> vecOfThreads;
     bool flagWait;
-    ThreadContext *threadsContext;
+    //ThreadContext *threadsContext;
     pthread_mutex_t pthreadMutex;
     sem_t sem;
     std::atomic<int>* atomic_counter;
@@ -66,7 +66,7 @@ K2* findLargestKey(JobContext* jobContext) {
     ThreadContext *tc;
     K2* large = nullptr;
     for (int i = 0; i < jobContext->numOfThreads; i++){
-        tc = (ThreadContext*) (jobContext->threadsContext + i*(sizeof(ThreadContext))); //TODO check
+        tc = (ThreadContext*) (&jobContext->vecOfThreads.at(i)); //TODO check
         if (tc->threadIntermediateVec->empty())
             continue;
         IntermediatePair *temp = &tc->threadIntermediateVec->back();
@@ -197,8 +197,8 @@ JobHandle startMapReduceJob(const MapReduceClient& client,
                             int multiThreadLevel) {
     Barrier *barrier = new Barrier(multiThreadLevel);
     std::atomic<int> *atomic_counter = new std::atomic<int>(0);
-    ThreadContext allThreadsContext[multiThreadLevel];
-    pthread_t *threads = new pthread_t[multiThreadLevel];
+    //ThreadContext *allThreadsContext = new ThreadContext[multiThreadLevel];
+    //pthread_t *threads = new pthread_t[multiThreadLevel];
     JobContext *jobContext = new JobContext;
     if (pthread_mutex_init(&jobContext->pthreadMutex, nullptr) != 0)
     {
@@ -207,25 +207,24 @@ JobHandle startMapReduceJob(const MapReduceClient& client,
     jobContext->barrier = barrier;
     jobContext->flagWait = false;
     jobContext->outputVec = &outputVec;
-    jobContext->threadsContext = allThreadsContext;
     jobContext->atomic_counter = atomic_counter;
-    jobContext->vecOfIntermediateVec = new VecOfIntermediateVec ;
+    jobContext->vecOfIntermediateVec = new VecOfIntermediateVec;
     jobContext->numOfThreads = multiThreadLevel;
-    //int pairsForThread = inputVec.size()/multiThreadLevel;
     jobContext->myState.stage = UNDEFINED_STAGE;
-            //static_cast<stage_t>(jobContext->atomicStage->load());
     jobContext->myState.percentage = 0;
     for (int i = 0; i < multiThreadLevel; i++) {
-        //ThreadContext* threadContext = new ThreadContext;
-        allThreadsContext[i].globalJobContext = jobContext;
-        allThreadsContext[i].ID = i;
-        allThreadsContext[i].thisThread = threads[i];
-        allThreadsContext[i].mapReduceClient = &client;
-        allThreadsContext[i].inputVec = &inputVec;
-        //allThreadsContext[i].threadIntermediateVec = new IntermediateVec;
-        jobContext->vecOfThreads.push_back(allThreadsContext[i]);
+        ThreadContext *threadContext = new ThreadContext;
+        threadContext->globalJobContext = jobContext;
+        threadContext->ID = i;
+        //threadContext->thisThread = threads[i];
+        threadContext->mapReduceClient = &client;
+        threadContext->inputVec = &inputVec;
+        jobContext->vecOfThreads.push_back(*threadContext);
 
-        pthread_create(&threads[i], nullptr, mapWraper, &allThreadsContext[i]);
+        pthread_create(&threadContext->thisThread,
+                       nullptr,
+                       mapWraper,
+                       &threadContext);
     }
     return static_cast<JobHandle>(jobContext);
 }
