@@ -70,7 +70,7 @@ K2* findLargestKey(JobContext* jobContext) {
         if (tc->threadIntermediateVec->empty())
             continue;
         IntermediatePair *temp = &tc->threadIntermediateVec->back();
-        if (large == nullptr || large < temp->first){
+        if (large == nullptr || *large < *temp->first){
             large = temp->first;
         }
     }
@@ -99,10 +99,12 @@ void insertIntermediateVecs(JobContext* jobContext, ThreadContext* threadContext
             }
             IntermediateVec intermediateVecTemp;
             for (ThreadContext tc : jobContext->vecOfThreads){
+                if (tc.threadIntermediateVec->empty()){
+                    break;
+                }
                 IntermediatePair temp = tc.threadIntermediateVec->back();
-                if (!(temp.first < curLargestKey) &&
-                        !(curLargestKey < temp.first)){
-
+                if (!(*temp.first < *curLargestKey) &&
+                        !(*curLargestKey < *temp.first)){
                     intermediateVecTemp.push_back(temp);
                     tc.threadIntermediateVec->pop_back();
                 }
@@ -133,7 +135,8 @@ void emit3 (K3* key, V3* value, void* context) {
     auto it = std::lower_bound(pContext->globalJobContext->outputVec->begin(), pContext->globalJobContext->outputVec->begin()
                                , newPair, compareOutputPair);
     pContext->globalJobContext->outputVec->insert(it, newPair);
-    pContext->mapReduceClient->reduce(pContext->threadIntermediateVec, pContext);
+    pthread_mutex_unlock(&pContext->globalJobContext->pthreadMutex);
+    //pContext->mapReduceClient->reduce(pContext->threadIntermediateVec, pContext);
 }
 
 void reducePhase(ThreadContext *pContext);
@@ -144,7 +147,7 @@ void* mapWraper(void* arg){
     threadContext->globalJobContext->myState.stage = MAP_STAGE;
     //pthread_mutex_lock(&threadContext->globalJobContext->pthreadMutex);
     threadContext->oldAtomicVal = (*(threadContext->globalJobContext->atomic_counter))++;
-    (*(threadContext->globalJobContext->atomic_counter))++;
+    //(*(threadContext->globalJobContext->atomic_counter))++;
     //pthread_mutex_unlock(&threadContext->globalJobContext->pthreadMutex);
     while(threadContext->oldAtomicVal < threadContext->inputVec->size()) {
         threadContext->mapReduceClient->map(threadContext->inputVec->at(threadContext->oldAtomicVal).first,
@@ -162,8 +165,8 @@ void* mapWraper(void* arg){
     //end barrier
 
     insertIntermediateVecs(threadContext->globalJobContext, threadContext);
-    threadContext->globalJobContext->barrier->barrier(); //TODO check if needed
-
+    //int x =3;
+    //threadContext->globalJobContext->barrier->barrier(); //TODO check if needed
     //TODO: maybe need in loop
     reducePhase(threadContext);
     //TODO: maybe need barrier
@@ -178,15 +181,14 @@ void reducePhase(ThreadContext *pContext) {
             pthread_mutex_unlock(&pContext->globalJobContext->pthreadMutex);
             return;
         }
-        pContext->threadIntermediateVec = &pContext->globalJobContext->vecOfIntermediateVec->back();
-        int sizeOfNewVec = pContext->threadIntermediateVec->size();
+        IntermediateVec temp = pContext->globalJobContext->vecOfIntermediateVec->back();
+        int sizeOfNewVec = temp.size();
         pContext->globalJobContext->vecOfIntermediateVec->pop_back();
         pContext->globalJobContext->myState.percentage += ((((float)100.0)/(float)pContext->globalJobContext->numOfIntermediatePairs)*
                 (float)sizeOfNewVec);
-
         pthread_mutex_unlock(&pContext->globalJobContext->pthreadMutex);
 
-        pContext->mapReduceClient->reduce(pContext->threadIntermediateVec, pContext);
+        pContext->mapReduceClient->reduce(&temp, pContext);
     }
 
 }
@@ -198,7 +200,7 @@ JobHandle startMapReduceJob(const MapReduceClient& client,
     Barrier *barrier = new Barrier(multiThreadLevel);
     std::atomic<int> *atomic_counter = new std::atomic<int>(0);
     //ThreadContext *allThreadsContext = new ThreadContext[multiThreadLevel];
-    //pthread_t *threads = new pthread_t[multiThreadLevel];
+    pthread_t *threads = new pthread_t[multiThreadLevel];
     JobContext *jobContext = new JobContext;
     if (pthread_mutex_init(&jobContext->pthreadMutex, nullptr) != 0)
     {
@@ -216,17 +218,19 @@ JobHandle startMapReduceJob(const MapReduceClient& client,
         ThreadContext *threadContext = new ThreadContext;
         threadContext->globalJobContext = jobContext;
         threadContext->ID = i;
-        //threadContext->thisThread = threads[i];
+        threadContext->thisThread = threads[i];
         threadContext->mapReduceClient = &client;
         threadContext->inputVec = &inputVec;
+        threadContext->threadIntermediateVec = new IntermediateVec;
         jobContext->vecOfThreads.push_back(*threadContext);
-
-        pthread_create(&threadContext->thisThread,
+    }
+    for (int i = 0; i < multiThreadLevel; i++) {
+        pthread_create(threads + i,
                        nullptr,
                        mapWraper,
-                       &threadContext);
+                       &jobContext->vecOfThreads.at(i));
     }
-    return static_cast<JobHandle>(jobContext);
+        return static_cast<JobHandle>(jobContext);
 }
 
 void waitForJob(JobHandle job){
