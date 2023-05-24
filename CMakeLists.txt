@@ -15,4 +15,9 @@ include_directories(Resources/Barrier)
 #        Resources/Barrier/Barrier.h)
 
 add_executable(os3
-        Resources/Atomic/atomicdemo_multivar.cpp)
+        SampleClient.cpp
+        MapReduceClient.h
+        MapReduceFramework.cpp
+        MapReduceFramework.h
+        Resources/Barrier/Barrier.cpp
+        Resources/Barrier/Barrier.h)
