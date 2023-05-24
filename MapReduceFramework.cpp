@@ -8,6 +8,7 @@
 #include <atomic>
 #include <algorithm>
 #include "Resources/Barrier/Barrier.h"
+#include <cmath>
 
 //TODO implement stages
 
@@ -80,6 +81,7 @@ K2* findLargestKey(JobContext* jobContext) {
 void insertIntermediateVecs(JobContext* jobContext, ThreadContext* threadContext){
     if (threadContext->ID != 0){
         sem_wait(&(jobContext->sem));
+        sem_post(&(jobContext->sem)); // Check if correct
     }
     else{
         threadContext->globalJobContext->myState.stage = SHUFFLE_STAGE;
@@ -115,7 +117,6 @@ void insertIntermediateVecs(JobContext* jobContext, ThreadContext* threadContext
             //(*(threadContext->globalJobContext->atomic_counter))++;
             //intermediateVecTemp.clear(); //TODO maybe
         }
-
         sem_post(&(jobContext->sem));
     }
 }
@@ -165,10 +166,13 @@ void* mapWraper(void* arg){
     //end barrier
 
     insertIntermediateVecs(threadContext->globalJobContext, threadContext);
+
     //int x =3;
-    //threadContext->globalJobContext->barrier->barrier(); //TODO check if needed
+    threadContext->globalJobContext->barrier->barrier(); //TODO check if needed
     //TODO: maybe need in loop
     reducePhase(threadContext);
+    //threadContext->globalJobContext->barrier->barrier();
+    threadContext->globalJobContext->myState.percentage = 100.0;
     //TODO: maybe need barrier
     //pthread_mutex_unlock(&mtx);
     return 0;
@@ -187,7 +191,6 @@ void reducePhase(ThreadContext *pContext) {
         pContext->globalJobContext->myState.percentage += ((((float)100.0)/(float)pContext->globalJobContext->numOfIntermediatePairs)*
                 (float)sizeOfNewVec);
         pthread_mutex_unlock(&pContext->globalJobContext->pthreadMutex);
-
         pContext->mapReduceClient->reduce(&temp, pContext);
     }
 
@@ -200,9 +203,13 @@ JobHandle startMapReduceJob(const MapReduceClient& client,
     Barrier *barrier = new Barrier(multiThreadLevel);
     std::atomic<int> *atomic_counter = new std::atomic<int>(0);
     //ThreadContext *allThreadsContext = new ThreadContext[multiThreadLevel];
-    pthread_t *threads = new pthread_t[multiThreadLevel];
+    pthread_t threads[multiThreadLevel];
     JobContext *jobContext = new JobContext;
     if (pthread_mutex_init(&jobContext->pthreadMutex, nullptr) != 0)
+    {
+        return nullptr; //TODO: ERROR
+    }
+    if (sem_init(&jobContext->sem, 0, 1) != 0)
     {
         return nullptr; //TODO: ERROR
     }
@@ -214,7 +221,7 @@ JobHandle startMapReduceJob(const MapReduceClient& client,
     jobContext->numOfThreads = multiThreadLevel;
     jobContext->myState.stage = UNDEFINED_STAGE;
     jobContext->myState.percentage = 0;
-    for (int i = 0; i < multiThreadLevel; i++) {
+    for (int i = 0; i < multiThreadLevel; ++i) {
         ThreadContext *threadContext = new ThreadContext;
         threadContext->globalJobContext = jobContext;
         threadContext->ID = i;
@@ -224,13 +231,19 @@ JobHandle startMapReduceJob(const MapReduceClient& client,
         threadContext->threadIntermediateVec = new IntermediateVec;
         jobContext->vecOfThreads.push_back(*threadContext);
     }
-    for (int i = 0; i < multiThreadLevel; i++) {
+    for (int i = 0; i < multiThreadLevel; ++i) {
         pthread_create(threads + i,
                        nullptr,
                        mapWraper,
                        &jobContext->vecOfThreads.at(i));
     }
-        return static_cast<JobHandle>(jobContext);
+/*
+    for (int i = 0; i < multiThreadLevel; ++i){
+        pthread_join(threads[i], nullptr);
+    }
+*/
+
+    return static_cast<JobHandle>(jobContext);
 }
 
 void waitForJob(JobHandle job){
