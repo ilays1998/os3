@@ -25,6 +25,9 @@ struct JobContext {
     pthread_mutex_t pthreadMutex;
     sem_t sem;
     std::atomic<int>* atomic_counter;
+    std::atomic<int>* mapCompleted;
+    std::atomic<int>* shuffleCompleted;
+    std::atomic<int>* reduceCompleted;
     //IntermediateVec* intermediateVec;
     VecOfIntermediateVec *vecOfIntermediateVec;
     int numOfThreads;
@@ -113,7 +116,8 @@ void insertIntermediateVecs(JobContext* jobContext, ThreadContext* threadContext
             }
             jobContext->vecOfIntermediateVec->insert(jobContext->vecOfIntermediateVec->begin(),
                                                      intermediateVecTemp);
-            threadContext->globalJobContext->myState.percentage += ((((float)100.0)/(float)threadContext->globalJobContext->numOfIntermediatePairs)*(float)intermediateVecTemp.size());
+            (*threadContext->globalJobContext->shuffleCompleted)++;
+            //threadContext->globalJobContext->myState.percentage += ((((float)100.0)/(float)threadContext->globalJobContext->numOfIntermediatePairs)*(float)intermediateVecTemp.size());
             //(*(threadContext->globalJobContext->atomic_counter))++;
             //intermediateVecTemp.clear(); //TODO maybe
         }
@@ -155,7 +159,8 @@ void* mapWraper(void* arg){
                                             threadContext->inputVec->at(threadContext->oldAtomicVal).second,
                                             threadContext);
         //pthread_mutex_lock(&threadContext->globalJobContext->pthreadMutex);
-        threadContext->globalJobContext->myState.percentage += (((float)100.0)/(float)threadContext->inputVec->size());
+        (*threadContext->globalJobContext->mapCompleted)++;
+        //threadContext->globalJobContext->myState.percentage += (((float)100.0)/(float)threadContext->inputVec->size());
         threadContext->oldAtomicVal = (*(threadContext->globalJobContext->atomic_counter))++;
         //pthread_mutex_unlock(&threadContext->globalJobContext->pthreadMutex);
     }
@@ -168,11 +173,11 @@ void* mapWraper(void* arg){
     insertIntermediateVecs(threadContext->globalJobContext, threadContext);
 
     //int x =3;
-    threadContext->globalJobContext->barrier->barrier(); //TODO check if needed
+    //threadContext->globalJobContext->barrier->barrier(); //TODO check if needed
     //TODO: maybe need in loop
     reducePhase(threadContext);
     //threadContext->globalJobContext->barrier->barrier();
-    threadContext->globalJobContext->myState.percentage = 100.0;
+    //threadContext->globalJobContext->myState.percentage = 100.0;
     //TODO: maybe need barrier
     //pthread_mutex_unlock(&mtx);
     return 0;
@@ -188,8 +193,9 @@ void reducePhase(ThreadContext *pContext) {
         IntermediateVec temp = pContext->globalJobContext->vecOfIntermediateVec->back();
         int sizeOfNewVec = temp.size();
         pContext->globalJobContext->vecOfIntermediateVec->pop_back();
-        pContext->globalJobContext->myState.percentage += ((((float)100.0)/(float)pContext->globalJobContext->numOfIntermediatePairs)*
-                (float)sizeOfNewVec);
+        (*pContext->globalJobContext->reduceCompleted)+=sizeOfNewVec;
+        /*pContext->globalJobContext->myState.percentage +=
+                ((((float)sizeOfNewVec)/(float)pContext->globalJobContext->numOfIntermediatePairs)*100.0f);*/
         pthread_mutex_unlock(&pContext->globalJobContext->pthreadMutex);
         pContext->mapReduceClient->reduce(&temp, pContext);
     }
@@ -202,6 +208,9 @@ JobHandle startMapReduceJob(const MapReduceClient& client,
                             int multiThreadLevel) {
     Barrier *barrier = new Barrier(multiThreadLevel);
     std::atomic<int> *atomic_counter = new std::atomic<int>(0);
+    std::atomic<int> *mapCounter = new std::atomic<int>(0);
+    std::atomic<int> *shuffleCounter = new std::atomic<int>(0);
+    std::atomic<int> *reduceCounter = new std::atomic<int>(0);
     //ThreadContext *allThreadsContext = new ThreadContext[multiThreadLevel];
     pthread_t threads[multiThreadLevel];
     JobContext *jobContext = new JobContext;
@@ -217,6 +226,9 @@ JobHandle startMapReduceJob(const MapReduceClient& client,
     jobContext->flagWait = false;
     jobContext->outputVec = &outputVec;
     jobContext->atomic_counter = atomic_counter;
+    jobContext->mapCompleted = mapCounter;
+    jobContext->shuffleCompleted = shuffleCounter;
+    jobContext->reduceCompleted = reduceCounter;
     jobContext->vecOfIntermediateVec = new VecOfIntermediateVec;
     jobContext->numOfThreads = multiThreadLevel;
     jobContext->myState.stage = UNDEFINED_STAGE;
@@ -259,12 +271,24 @@ void waitForJob(JobHandle job){
 void getJobState(JobHandle job, JobState* state){
     JobContext* jobContext = (JobContext*) job;
     state->stage = jobContext->myState.stage;
-    state->percentage = jobContext->myState.percentage;
+    float curPercentage = 0;
+    switch (jobContext->myState.stage) {
+        case MAP_STAGE:
+            curPercentage = ((*jobContext->mapCompleted) / (float)jobContext->vecOfThreads.at(0).inputVec->size()) * 100;
+            break;
+        case SHUFFLE_STAGE:
+            curPercentage = ((*jobContext->shuffleCompleted) / (float)jobContext->numOfIntermediatePairs) * 100;
+            break;
+        case REDUCE_STAGE:
+            curPercentage = ((*jobContext->reduceCompleted) / (float)jobContext->numOfIntermediatePairs) * 100;
+            break;
+    }
+    state->percentage = curPercentage;
 }
 
 void closeJobHandle(JobHandle job){
     JobContext* jobContext = (JobContext*) job;
-    if (jobContext->myState.stage != REDUCE_STAGE || jobContext->myState.percentage != 100.0){
+    if (jobContext->myState.stage != REDUCE_STAGE || *jobContext->reduceCompleted != jobContext->numOfIntermediatePairs){
         waitForJob(job);
     }
 
