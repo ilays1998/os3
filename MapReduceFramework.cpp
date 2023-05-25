@@ -48,12 +48,12 @@ struct ThreadContext {
     //OutputVec* threadOutputVec;
 };
 bool compareIntermediatePair(const IntermediatePair& a, const IntermediatePair& b){
-    if (a.first == nullptr || b.first == nullptr) {
-        // Handle the case where either a.first or b.first is null
-        // Return a comparison result based on your requirements
-        // For example, you could return true if a.first is null and false otherwise
-        return (a.first == nullptr);
-    }
+//    if (a.first == nullptr || b.first == nullptr) {
+//        // Handle the case where either a.first or b.first is null
+//        // Return a comparison result based on your requirements
+//        // For example, you could return true if a.first is null and false otherwise
+//        return (a.first == nullptr);
+//    }
     return *(a.first) < *(b.first);
 }
 
@@ -106,10 +106,12 @@ void insertIntermediateVecs(JobContext* jobContext, ThreadContext* threadContext
                 if (tc.threadIntermediateVec->empty()){
                     break;
                 }
-                IntermediatePair temp = tc.threadIntermediateVec->back();
-                if (!(*temp.first < *curLargestKey) &&
-                        !(*curLargestKey < *temp.first)){
-                    intermediateVecTemp.push_back(temp);
+                //IntermediatePair temp = tc.threadIntermediateVec->back();
+                while (true){
+                    if (tc.threadIntermediateVec->empty() || (*tc.threadIntermediateVec->back().first < *curLargestKey) ||
+                                                             (*curLargestKey < *tc.threadIntermediateVec->back().first))
+                        break;
+                    intermediateVecTemp.push_back(tc.threadIntermediateVec->back());
                     tc.threadIntermediateVec->pop_back();
                 }
             }
