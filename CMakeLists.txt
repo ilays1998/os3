@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.16.3)
 project(os3)
 
 set(CMAKE_CXX_STANDARD 14)
@@ -17,7 +17,7 @@ include_directories(Resources/Barrier)
 #        Resources/Barrier/Barrier.h)
 
 add_executable(os3
-texst4/test1.cpp        MapReduceClient.h
+Tests/test3.cpp       MapReduceClient.h
         MapReduceFramework.cpp
         MapReduceFramework.h
         Resources/Barrier/Barrier.cpp

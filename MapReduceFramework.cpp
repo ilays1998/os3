@@ -34,6 +34,7 @@ struct JobContext {
     Barrier* barrier;
     //std::mutex insertIntermediateVecsMutex;
     OutputVec *outputVec;
+    pthread_mutex_t pthreadMutexForEmit3;
 };
 
 struct ThreadContext {
@@ -136,12 +137,12 @@ void emit2 (K2* key, V2* value, void* context) {
 void emit3 (K3* key, V3* value, void* context) {
     ThreadContext* pContext = (ThreadContext*) context;
 
-    pthread_mutex_lock(&pContext->globalJobContext->pthreadMutex);
+    pthread_mutex_lock(&pContext->globalJobContext->pthreadMutexForEmit3);
     OutputPair newPair(key, value);
     auto it = std::lower_bound(pContext->globalJobContext->outputVec->begin(), pContext->globalJobContext->outputVec->end()
                                , newPair, compareOutputPair);
     pContext->globalJobContext->outputVec->insert(it, newPair); // TODO: check deep copy
-    pthread_mutex_unlock(&pContext->globalJobContext->pthreadMutex);
+    pthread_mutex_unlock(&pContext->globalJobContext->pthreadMutexForEmit3);
     //pContext->mapReduceClient->reduce(pContext->threadIntermediateVec, pContext);
 }
 
@@ -213,6 +214,10 @@ JobHandle startMapReduceJob(const MapReduceClient& client,
     if (pthread_mutex_init(&jobContext->pthreadMutex, nullptr) != 0)
     {
         return nullptr; //TODO: ERROR
+    }
+  if (pthread_mutex_init(&jobContext->pthreadMutexForEmit3, nullptr) != 0)
+    {
+      return nullptr; //TODO: ERROR
     }
     if (sem_init(&jobContext->sem, 0, 1) != 0)
     {
@@ -301,6 +306,7 @@ void closeJobHandle(JobHandle job){
     }
     delete jobContext->vecOfIntermediateVec;
     pthread_mutex_destroy(&jobContext->pthreadMutex);
+    pthread_mutex_destroy(&jobContext->pthreadMutexForEmit3);
     sem_destroy(&jobContext->sem);
 
     delete jobContext;
