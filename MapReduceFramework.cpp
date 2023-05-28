@@ -104,10 +104,6 @@ void insertIntermediateVecs(JobContext* jobContext, ThreadContext* threadContext
             }
             IntermediateVec intermediateVecTemp;
             for (ThreadContext tc : jobContext->vecOfThreads){
-                if (tc.threadIntermediateVec->empty()){
-                    break;
-                }
-                //IntermediatePair temp = tc.threadIntermediateVec->back();
                 while (true){
                     if (tc.threadIntermediateVec->empty() || (*tc.threadIntermediateVec->back().first < *curLargestKey) ||
                                                              (*curLargestKey < *tc.threadIntermediateVec->back().first))
@@ -227,7 +223,7 @@ JobHandle startMapReduceJob(const MapReduceClient& client,
     {
       return nullptr; //TODO: ERROR
     }
-    if (sem_init(&jobContext->sem, 0, 1) != 0)
+    if (sem_init(&jobContext->sem, 0, 0) != 0)
     {
         return nullptr; //TODO: ERROR
     }
