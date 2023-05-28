@@ -20,5 +20,5 @@ add_executable(os3
 texst4/test2.cpp       MapReduceClient.h
         MapReduceFramework.cpp
         MapReduceFramework.h
-        Resources/Barrier/Barrier.cpp
-        Resources/Barrier/Barrier.h)
+        Barrier.cpp
+        Barrier.h)

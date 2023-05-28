@@ -7,7 +7,7 @@
 #include "semaphore.h"
 #include <atomic>
 #include <algorithm>
-#include "Resources/Barrier/Barrier.h"
+#include "Barrier.h"
 #include <cmath>
 #include <cstdio>
 #include <iostream>
@@ -44,7 +44,7 @@ struct ThreadContext {
     IntermediateVec* threadIntermediateVec;
     IntermediateVec* threadReduceIntermediateVec;
     JobContext *globalJobContext;
-    int oldAtomicVal;
+    long unsigned int oldAtomicVal;
 };
 bool compareIntermediatePair(const IntermediatePair& a, const IntermediatePair& b){
 //    if (a.first == nullptr || b.first == nullptr) {
@@ -91,7 +91,8 @@ void insertIntermediateVecs(JobContext* jobContext, ThreadContext* threadContext
         threadContext->globalJobContext->myState.percentage = 0;
         threadContext->globalJobContext->numOfIntermediatePairs = 0;
         for (auto it : jobContext->vecOfThreads){
-            threadContext->globalJobContext->numOfIntermediatePairs += it.threadIntermediateVec->size();
+            threadContext->globalJobContext->numOfIntermediatePairs +=
+                    it.threadIntermediateVec->size();
         }
         while (true){
             K2 *curLargestKey = findLargestKey(jobContext);
@@ -103,8 +104,9 @@ void insertIntermediateVecs(JobContext* jobContext, ThreadContext* threadContext
             IntermediateVec intermediateVecTemp;
             for (ThreadContext tc : jobContext->vecOfThreads){
                 while (true){
-                    if (tc.threadIntermediateVec->empty() || (*tc.threadIntermediateVec->back().first < *curLargestKey) ||
-                                                             (*curLargestKey < *tc.threadIntermediateVec->back().first))
+                    if (tc.threadIntermediateVec->empty() ||
+                    (*tc.threadIntermediateVec->back().first < *curLargestKey) ||
+                    (*curLargestKey < *tc.threadIntermediateVec->back().first))
                         break;
                     intermediateVecTemp.push_back(tc.threadIntermediateVec->back());
                     tc.threadIntermediateVec->pop_back();
@@ -131,7 +133,8 @@ void emit3 (K3* key, V3* value, void* context) {
 
     pthread_mutex_lock(&pContext->globalJobContext->pthreadMutexForEmit3);
     OutputPair newPair(key, value);
-    auto it = std::lower_bound(pContext->globalJobContext->outputVec->begin(), pContext->globalJobContext->outputVec->end()
+    auto it = std::lower_bound(pContext->globalJobContext->outputVec->begin(),
+                               pContext->globalJobContext->outputVec->end()
                                , newPair, compareOutputPair);
     pContext->globalJobContext->outputVec->insert(it, newPair); // TODO: check deep copy
     pthread_mutex_unlock(&pContext->globalJobContext->pthreadMutexForEmit3);
@@ -147,7 +150,8 @@ ThreadContext *initializeThreadContext(const MapReduceClient &client,
 void* mapWraper(void* arg){
     ThreadContext* threadContext = (ThreadContext*) arg;
     threadContext->globalJobContext->myState.stage = MAP_STAGE;
-    while((threadContext->oldAtomicVal = (*threadContext->globalJobContext->atomic_counter)++) < threadContext->inputVec->size()) {
+    while((threadContext->oldAtomicVal = (*threadContext->globalJobContext->atomic_counter)++)
+    < threadContext->inputVec->size()) {
         threadContext->mapReduceClient->map(threadContext->inputVec->at(threadContext->oldAtomicVal).first,
                                             threadContext->inputVec->at(threadContext->oldAtomicVal).second,
                                             threadContext);
@@ -261,7 +265,7 @@ void waitForJob(JobHandle job){
         return;
     }
     *jobContext->flagWait = true;
-    for (int i =0 ; i< jobContext->vecOfThreads.size(); i++){
+    for (long unsigned int i =0 ; i< jobContext->vecOfThreads.size(); i++){
         if(pthread_join(*jobContext->vecOfThreads.at(i).thisThread,
                         nullptr) != 0){
             std::cout << ERROR_MSG << "couldn't join threads" << std::endl;
@@ -286,6 +290,9 @@ void getJobState(JobHandle job, JobState* state){
         case REDUCE_STAGE:
             curPercentage = ((*jobContext->reduceCompleted) /
                     (float)jobContext->numOfIntermediatePairs) * 100;
+            break;
+        case UNDEFINED_STAGE:
+            curPercentage = 0;
             break;
     }
     state->percentage = curPercentage;
