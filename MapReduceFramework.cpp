@@ -116,6 +116,9 @@ void insertIntermediateVecs(JobContext* jobContext, ThreadContext* threadContext
                     tc.threadIntermediateVec->pop_back();
                 }
             }
+            if (intermediateVecTemp.empty()) {
+                continue;
+            }
             jobContext->vecOfIntermediateVec->insert(jobContext->vecOfIntermediateVec->begin(),
                                                      intermediateVecTemp); // TODO: fix deep copy
             (*threadContext->globalJobContext->shuffleCompleted)++;
@@ -187,6 +190,11 @@ void reducePhase(ThreadContext *pContext) {
         //IntermediateVec temp = pContext->globalJobContext->vecOfIntermediateVec->back();
         /*IntermediateVec tempVec(pContext->globalJobContext->vecOfIntermediateVec->back().begin(),
                                 pContext->globalJobContext->vecOfIntermediateVec->back().end());*/
+//        if (pContext->globalJobContext->vecOfIntermediateVec->back().empty()) {
+//            pContext->globalJobContext->vecOfIntermediateVec->pop_back();
+//            pthread_mutex_unlock(&pContext->globalJobContext->pthreadMutex);
+//            continue;
+//        }
         pContext->threadReduceIntermediateVec->assign(pContext->globalJobContext->vecOfIntermediateVec->back().begin(),
                                                 pContext->globalJobContext->vecOfIntermediateVec->back().end()); // TODO check deep copy
         int sizeOfNewVec = pContext->threadReduceIntermediateVec->size();
