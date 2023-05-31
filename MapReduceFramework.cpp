@@ -136,7 +136,10 @@ void emit3 (K3* key, V3* value, void* context) {
     ThreadContext* pContext = (ThreadContext*) context;
 
     OutputPair newPair(key, value);
-    pthread_mutex_lock(&pContext->globalJobContext->pthreadMutexForEmit3);
+    if(pthread_mutex_lock(&pContext->globalJobContext->pthreadMutexForEmit3) != 0){
+        std::cout << ERROR_MSG << "couldn't lock mutex" << std::endl;
+        exit(1);
+    }
 /*
     auto it = std::lower_bound(pContext->globalJobContext->outputVec->begin(),
                                pContext->globalJobContext->outputVec->end()
@@ -174,7 +177,10 @@ void* mapWraper(void* arg){
 
 void reducePhase(ThreadContext *pContext) {
     while (true) {
-        pthread_mutex_lock(&pContext->globalJobContext->pthreadMutex);
+        if(pthread_mutex_lock(&pContext->globalJobContext->pthreadMutex)){
+            std::cout << ERROR_MSG << "couldn't lock mutex" << std::endl;
+            exit(1);
+        }
         if (pContext->globalJobContext->vecOfIntermediateVec->empty()) {
             pthread_mutex_unlock(&pContext->globalJobContext->pthreadMutex);
             return;
@@ -310,10 +316,7 @@ void getJobState(JobHandle job, JobState* state){
 
 void closeJobHandle(JobHandle job){
     JobContext* jobContext = (JobContext*) job;
-    if (jobContext->myState.stage != REDUCE_STAGE ||
-        *jobContext->reduceCompleted != jobContext->numOfIntermediatePairs){
-        waitForJob(job);
-    }
+    waitForJob(job);
     for (int i = 0; i < jobContext->numOfThreads; i++) {
         delete jobContext->arrayVec[i]->threadIntermediateVec;
         delete jobContext->arrayVec[i]->threadReduceIntermediateVec;
